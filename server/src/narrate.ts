@@ -14,6 +14,15 @@ export interface Narration {
   hook: string; caption: string; title: string; hashtags: string[]
   viralityScore: number; agentCredits: { copy: string; score: string }
 }
+// Subset of the frontend's full BrandProfile actually used for narration —
+// the rest (audience, voice characteristics, sample hooks) is available to
+// wire into prompts later but not needed for the current fallback/LLM path.
+export interface BrandVoice {
+  toneVoice?: string
+  brandHashtags?: string[]
+  avoidTopics?: string[]
+  styleNotes?: string
+}
 
 const STOP = new Set(['the','a','an','and','or','but','is','are','to','of','in','on','for','with','that','this','it','you','we','i'])
 
@@ -40,12 +49,43 @@ function fbTitle(c: NarrationInput): string {
   const kw = keywords(c.transcriptExcerpt, 3)
   return titleCase(kw.length ? kw.join(' ') : c.primaryTopic || 'Highlight')
 }
-function fbHashtags(c: NarrationInput, platforms: string[]): string[] {
+function fbHashtags(c: NarrationInput, platforms: string[], brand?: BrandVoice): string[] {
   const base = ['#fyp', '#viral']
   const topic = (c.primaryTopic || 'clip').replace(/[^a-z0-9]/gi, '')
   const kw = keywords(c.transcriptExcerpt, 2).map((w) => '#' + w)
   const plat = platforms.includes('linkedin') ? ['#business'] : ['#shorts']
-  return [...new Set([...base, '#' + topic, ...kw, ...plat])].slice(0, 6)
+  const brandTags = (brand?.brandHashtags || []).map((h) => (h.startsWith('#') ? h : '#' + h))
+  const all = [...brandTags, ...base, '#' + topic, ...kw, ...plat]
+  return dedupeAvoiding(all, brand?.avoidTopics).slice(0, 6)
+}
+
+/**
+ * Dedupe (case-insensitively, keeping first occurrence's original casing —
+ * brand-authored tags like "#shaddaiAI" keep their intended casing) and drop
+ * any tag mentioning an avoided topic.
+ */
+function dedupeAvoiding(tags: string[], avoidTopics?: string[]): string[] {
+  const avoid = (avoidTopics || []).map((t) => t.toLowerCase().replace(/[^a-z0-9]/g, ''))
+  const seenKeys = new Set<string>()
+  const out: string[] = []
+  for (const raw of tags) {
+    const normalized = '#' + raw.replace(/^#+/, '')
+    const bareLower = normalized.slice(1).toLowerCase()
+    if (!bareLower || seenKeys.has(bareLower)) continue
+    if (avoid.some((a) => a && bareLower.includes(a))) continue
+    seenKeys.add(bareLower)
+    out.push(normalized)
+  }
+  return out
+}
+
+/** Parse a free-text LLM hashtag response ("#a, #b c") into clean, deduped, lowercase #tags. */
+export function parseHashtagList(raw: string): string[] {
+  const tags = (raw.match(/#?[a-zA-Z][a-zA-Z0-9_-]*/g) || [])
+    .map((t) => t.replace(/[^a-zA-Z0-9]/g, ''))
+    .filter(Boolean)
+    .map((t) => t.toLowerCase())
+  return dedupeAvoiding(tags)
 }
 
 // ── optional LLM (only if configured); AURA wraps the call ──
@@ -67,16 +107,29 @@ async function llmText(taskType: string, prompt: string, fallback: string): Prom
   return out || fallback
 }
 
-export async function narrate(c: NarrationInput, platforms: string[]): Promise<Narration> {
+export async function narrate(c: NarrationInput, platforms: string[], brand?: BrandVoice): Promise<Narration> {
   const ex = c.transcriptExcerpt || ''
-  const [hook, caption, title] = await Promise.all([
-    llmText('hook', `Write a punchy 1-line hook for a short video clip about: "${ex}". Max 90 chars, no hashtags.`, fbHook(c)),
-    llmText('caption', `Write a 1-2 sentence on-screen caption for: "${ex}". Max 140 chars.`, fbCaption(c)),
-    llmText('title', `Write a 3-6 word punchy title for a clip about: "${ex}".`, fbTitle(c)),
+  const toneNote = brand?.toneVoice ? ` Tone: ${brand.toneVoice}.` : ''
+  const styleNote = brand?.styleNotes ? ` Style: ${brand.styleNotes}.` : ''
+  const avoidNote = brand?.avoidTopics?.length ? ` Avoid mentioning: ${brand.avoidTopics.join(', ')}.` : ''
+  const brandContext = toneNote + styleNote + avoidNote
+
+  const fallbackHashtags = fbHashtags(c, platforms, brand)
+  const [hook, caption, title, hashtagsRaw] = await Promise.all([
+    llmText('hook', `Write a punchy 1-line hook for a short video clip about: "${ex}".${brandContext} Max 90 chars, no hashtags.`, fbHook(c)),
+    llmText('caption', `Write a 1-2 sentence on-screen caption for: "${ex}".${brandContext} Max 140 chars.`, fbCaption(c)),
+    llmText('title', `Write a 3-6 word punchy title for a clip about: "${ex}".${brandContext}`, fbTitle(c)),
+    llmText('hashtags', `List 5-6 relevant hashtags (space-separated, with #) for a short video clip about: "${ex}".${brandContext}`, ''),
   ])
+
+  const llmHashtags = parseHashtagList(hashtagsRaw)
+  const brandTags = (brand?.brandHashtags || []).map((h) => (h.startsWith('#') ? h : '#' + h))
+  const hashtags = llmHashtags.length
+    ? dedupeAvoiding([...brandTags, ...llmHashtags], brand?.avoidTopics).slice(0, 6)
+    : fallbackHashtags
+
   return {
-    hook, caption, title,
-    hashtags: fbHashtags(c, platforms), // deterministic; LLM hashtags can come later
+    hook, caption, title, hashtags,
     viralityScore: c.compositeScore,
     agentCredits: { copy: 'QUILL', score: 'TURTLE' },
   }

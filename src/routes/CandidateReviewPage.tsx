@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -109,6 +109,10 @@ export function CandidateReviewPage() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['tiktok', 'reels', 'x'])
   const [burnCaptions, setBurnCaptions] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const brandProfiles = useClipsStore((s) => s.brandProfiles)
+  const [brandProfileId, setBrandProfileId] = useState<string>(
+    () => brandProfiles.find((p) => p.isDefault)?.profileId ?? '',
+  )
 
   // Fetch candidates on mount (covers direct nav / reload).
   useEffect(() => { if (sourceId) loadSourceDetail(sourceId) }, [sourceId, loadSourceDetail])
@@ -154,6 +158,7 @@ export function CandidateReviewPage() {
         sourceId,
         candidateIds: selected,
         platforms: selectedPlatforms,
+        brandProfileId: brandProfileId || undefined,
         burnCaptions,
       })
       addToast({
@@ -293,6 +298,35 @@ export function CandidateReviewPage() {
                   Captions
                 </p>
                 <BurnCaptionsToggle value={burnCaptions} onChange={setBurnCaptions} />
+              </div>
+
+              {/* divider */}
+              <div className="h-px bg-border" />
+
+              {/* ── brand voice ── */}
+              <div>
+                <p className="text-[10px] font-mono tracking-widest text-muted-foreground uppercase mb-2.5">
+                  Brand Voice
+                </p>
+                {brandProfiles.length === 0 ? (
+                  <Link
+                    to="/clips/settings/new"
+                    className="text-xs text-primary underline underline-offset-4 decoration-primary/40"
+                  >
+                    Create a brand profile to shape hooks, captions &amp; hashtags
+                  </Link>
+                ) : (
+                  <select
+                    value={brandProfileId}
+                    onChange={(e) => setBrandProfileId(e.target.value)}
+                    className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">None — generic copy</option>
+                    {brandProfiles.map((p) => (
+                      <option key={p.profileId} value={p.profileId}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* divider */}

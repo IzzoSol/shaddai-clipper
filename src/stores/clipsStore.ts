@@ -221,8 +221,12 @@ export const useClipsStore = create<ClipsState>()(
         } catch { /* local copy already updated; engine is best-effort */ }
       },
 
-      generateClips: async ({ sourceId, candidateIds, platforms, burnCaptions }) => {
-        const { batchId } = await jpost('/generate', { sourceId, candidateIds, platforms, burnCaptions: !!burnCaptions })
+      generateClips: async ({ sourceId, candidateIds, platforms, brandProfileId, burnCaptions }) => {
+        const profile = brandProfileId ? get().brandProfiles.find((p) => p.profileId === brandProfileId) : undefined
+        const brandProfile = profile
+          ? { toneVoice: profile.toneVoice, brandHashtags: profile.brandHashtags, avoidTopics: profile.avoidTopics, styleNotes: profile.styleNotes }
+          : undefined
+        const { batchId } = await jpost('/generate', { sourceId, candidateIds, platforms, burnCaptions: !!burnCaptions, brandProfile })
         const batch: GenerationBatch = { batchId, sourceId, totalClipsRequested: candidateIds.length, totalClipsGenerated: 0, platforms, status: 'queued', progressPct: 0, currentStage: 'queued', totalCostUsd: 0, aiTokensUsed: 0, processingDurationSec: 0, clips: [], createdAt: new Date().toISOString(), completedAt: null }
         set((st) => ({ batches: [batch, ...st.batches] }))
         pollBatch(batchId, set, get)

@@ -19,7 +19,7 @@ import { downloadFromUrl, probeUrlTitle } from './download.ts'
 import { assertSafePublicUrl } from './url-validate.ts'
 import { transcribePCM, type Segment } from './transcribe.ts'
 import { aura } from './aura.ts'
-import { narrate } from './narrate.ts'
+import { narrate, type BrandVoice } from './narrate.ts'
 import { generateCover } from './images.ts'
 import { dedupeText } from './clean.ts'
 import { clipsToAssets } from './asset-manifest.ts'
@@ -29,9 +29,9 @@ await mkdir(DATA, { recursive: true })
 
 // ── in-memory state (single-user engine) ──
 type Status = 'uploading' | 'normalizing' | 'ingested' | 'failed'
-interface Source { sourceId: string; title: string; originalFilename: string; durationSec: number; status: Status; stage?: string; progressPct?: number; transcriptId?: string; errorMessage?: string; createdAt: string }
+interface Source { sourceId: string; title: string; originalFilename: string; durationSec: number; status: Status; stage?: string; progressPct?: number; transcriptId?: string; errorMessage?: string; createdAt: string; language?: string }
 interface Candidate { candidateId: string; startSec: number; endSec: number; durationSec: number; compositeScore: number; signals: { linguistic: number; audio: number; sentiment: number; qa: number }; primaryTopic: string; summarySentence: string; transcriptExcerpt: string; status: string }
-interface Batch { batchId: string; sourceId: string; status: string; progressPct: number; currentStage: string; totalClipsRequested: number; totalClipsGenerated: number; platforms: string[]; burnCaptions: boolean; clips: any[]; createdAt: string; completedAt: string | null }
+interface Batch { batchId: string; sourceId: string; status: string; progressPct: number; currentStage: string; totalClipsRequested: number; totalClipsGenerated: number; platforms: string[]; burnCaptions: boolean; brandProfile?: BrandVoice; clips: any[]; createdAt: string; completedAt: string | null }
 
 const sources = new Map<string, Source>()
 const transcripts = new Map<string, Segment[]>()
@@ -176,7 +176,7 @@ async function processSource(sourceId: string) {
 
       const pcm = await extractPCM16k(input)
       src.stage = 'transcribing'; src.progressPct = 0
-      const segs = await transcribePCM(pcm, (frac) => { src.progressPct = Math.round(frac * 100) })
+      const segs = await transcribePCM(pcm, (frac) => { src.progressPct = Math.round(frac * 100) }, src.language)
       transcripts.set(sourceId, segs)
       src.stage = 'detecting'
       candidates.set(sourceId, buildCandidates(segs, pcm))
@@ -225,7 +225,7 @@ async function generateBatch(batchId: string, candidateIds: string[]) {
     const narration = await narrate({
       startSec: c.startSec, endSec: c.endSec, durationSec: c.durationSec,
       compositeScore: c.compositeScore, primaryTopic: c.primaryTopic, transcriptExcerpt: c.transcriptExcerpt,
-    }, batch.platforms)
+    }, batch.platforms, batch.brandProfile)
     let coverUrl: string | undefined
     try {
       const cover = await generateCover({ input, outDir, atSec: c.startSec + 1, title: narration.title, topic: c.primaryTopic })
@@ -304,7 +304,7 @@ app.post('/api/clips/v1/sources', async (req, reply) => {
 // Paste-a-URL ingestion: download via yt-dlp (YouTube/TikTok/X/~1800 sites),
 // then hand off to the exact same pipeline a file upload uses.
 app.post('/api/clips/v1/sources/from-url', async (req, reply) => {
-  const body = (req.body || {}) as { url?: string }
+  const body = (req.body || {}) as { url?: string; language?: string }
   const url = (body.url || '').trim()
   if (!url) return reply.code(400).send({ error: { code: 'NO_URL', message: 'url required' } })
   let parsed: URL
@@ -316,7 +316,9 @@ app.post('/api/clips/v1/sources/from-url', async (req, reply) => {
 
   const sourceId = randomUUID()
   const dir = join(DATA, sourceId)
-  const src: Source = { sourceId, title: titleFrom(parsed.hostname), originalFilename: url, durationSec: 0, status: 'uploading', stage: 'downloading', createdAt: new Date().toISOString() }
+  // language omitted -> Whisper auto-detects (multilingual model, see transcribe.ts)
+  const language = typeof body.language === 'string' && body.language.trim() ? body.language.trim() : undefined
+  const src: Source = { sourceId, title: titleFrom(parsed.hostname), originalFilename: url, durationSec: 0, status: 'uploading', stage: 'downloading', createdAt: new Date().toISOString(), language }
   sources.set(sourceId, src)
 
   probeUrlTitle(url).then((title) => { if (title) src.title = title }) // best-effort, doesn't block ingestion
@@ -396,14 +398,17 @@ app.delete('/api/clips/v1/sources/:id', async (req, reply) => {
 })
 
 app.post('/api/clips/v1/generate', async (req, reply) => {
-  const body = (req.body || {}) as { sourceId?: string; candidateIds?: string[]; platforms?: string[] }
+  const body = (req.body || {}) as { sourceId?: string; candidateIds?: string[]; platforms?: string[]; brandProfile?: BrandVoice }
   if (!body.sourceId || !sources.get(body.sourceId)) return reply.code(400).send({ error: { code: 'BAD_SOURCE' } })
   const cands = candidates.get(body.sourceId) || []
   const ids = body.candidateIds?.length ? body.candidateIds : cands.slice(0, 3).map((c) => c.candidateId)
   const platforms = body.platforms?.length ? body.platforms : ['tiktok', 'reels']
   const burnCaptions = (body as any).burnCaptions === true
+  // Brand profiles live client-side only (no server-side profile storage/CRUD
+  // exists) — the frontend sends the full profile object inline per request.
+  const brandProfile = body.brandProfile && typeof body.brandProfile === 'object' ? body.brandProfile : undefined
   const batchId = randomUUID()
-  batches.set(batchId, { batchId, sourceId: body.sourceId, status: 'queued', progressPct: 0, currentStage: 'queued', totalClipsRequested: ids.length, totalClipsGenerated: 0, platforms, burnCaptions, clips: [], createdAt: new Date().toISOString(), completedAt: null })
+  batches.set(batchId, { batchId, sourceId: body.sourceId, status: 'queued', progressPct: 0, currentStage: 'queued', totalClipsRequested: ids.length, totalClipsGenerated: 0, platforms, burnCaptions, brandProfile, clips: [], createdAt: new Date().toISOString(), completedAt: null })
   generateBatch(batchId, ids) // fire and forget — poll /batches/:id
   return { batchId, status: 'queued' }
 })

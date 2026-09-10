@@ -17,11 +17,15 @@ export interface Segment {
   speaker?: string
 }
 
-// tiny.en is the default — it is ~3-5x faster than base.en on CPU, which matters
-// a lot for real long-form videos (a 25-min upload is unusable on base.en/CPU).
-// Override with WHISPER_MODEL='Xenova/whisper-base.en' (or small.en) for higher
-// accuracy on shorter clips or when a GPU is available.
-const MODEL = process.env.WHISPER_MODEL || 'Xenova/whisper-tiny.en'
+// tiny is the default — it is ~3-5x faster than base on CPU, which matters a
+// lot for real long-form videos (a 25-min upload is unusable on base/CPU).
+// Multilingual (no .en suffix) by default — same size/memory footprint as the
+// old English-only tiny.en, but auto-detects and transcribes ~100 languages
+// instead of mangling anything non-English through an English-only model.
+// Override with WHISPER_MODEL='Xenova/whisper-base' (or small) for higher
+// accuracy on shorter clips or when more RAM/a GPU is available — note this
+// DOES increase memory use, unlike the tiny.en -> tiny swap above.
+const MODEL = process.env.WHISPER_MODEL || 'Xenova/whisper-tiny'
 
 // lazy singleton — the model load is expensive, do it once
 let _asr: any = null
@@ -56,14 +60,18 @@ function mapChunks(chunks: any[], offsetSec: number): Segment[] {
  * Transcribe 16kHz mono Float32 PCM into timestamped segments.
  * For long audio, runs in WINDOW_SEC slices so we can report progress and keep
  * each model call bounded — a 25-min upload no longer looks frozen. `onProgress`
- * receives a 0..1 fraction after each window.
+ * receives a 0..1 fraction after each window. `language` is an optional ISO-639-1
+ * code (e.g. 'es', 'fr') to force a language — omit to let Whisper auto-detect
+ * (the multilingual default model handles this natively).
  */
 export async function transcribePCM(
   samples: Float32Array,
   onProgress?: (frac: number) => void,
+  language?: string,
 ): Promise<Segment[]> {
   const asr = await getTranscriber()
-  const opts = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 }
+  const opts: Record<string, unknown> = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 }
+  if (language) opts.language = language
   const WIN = WINDOW_SEC * SR
 
   // Short clip → single pass.
