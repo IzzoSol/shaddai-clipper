@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/uiStore'
@@ -14,6 +15,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Menu,
+  X,
 } from 'lucide-react'
 
 const navItems = [
@@ -28,18 +31,35 @@ const navItems = [
 export function ClipsLayout() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
   const location = useLocation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const currentPage = navItems.find(
     (item) => (item.end ? location.pathname === item.to : location.pathname.startsWith(item.to))
   )
 
+  // Close the mobile drawer whenever the route changes (tapping a nav link
+  // both navigates and closes it).
+  useEffect(() => { setMobileNavOpen(false) }, [location.pathname])
+
   return (
     <div className="flex h-screen bg-background transition-colors">
-      {/* ── Sidebar ── */}
+      {/* ── Mobile backdrop — tap to close the drawer ── */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* ── Sidebar — fixed off-canvas drawer on mobile, persistent column on desktop ── */}
       <aside
         className={cn(
-          'relative flex flex-col border-r border-border bg-surface transition-all duration-300',
-          sidebarCollapsed ? 'w-16' : 'w-64'
+          'flex flex-col border-r border-border bg-surface transition-all duration-300',
+          'fixed inset-y-0 left-0 z-50 w-64 -translate-x-full',
+          mobileNavOpen && 'translate-x-0',
+          'md:relative md:inset-auto md:z-auto md:translate-x-0',
+          sidebarCollapsed ? 'md:w-16' : 'md:w-64',
         )}
       >
         {/* Wordmark */}
@@ -115,9 +135,10 @@ export function ClipsLayout() {
           </div>
         )}
 
+        {/* Collapse toggle — desktop-only; the mobile drawer always opens at full width */}
         <button
           onClick={toggleSidebar}
-          className="flex items-center justify-center h-10 border-t border-border text-muted-foreground hover:text-foreground transition-colors"
+          className="hidden md:flex items-center justify-center h-10 border-t border-border text-muted-foreground hover:text-foreground transition-colors"
         >
           {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
@@ -125,16 +146,25 @@ export function ClipsLayout() {
 
       {/* ── Main ── */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between h-16 px-6 border-b border-border bg-surface/80 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <span className="rec-dot h-2 w-2 rounded-full bg-secondary shadow-[0_0_8px_var(--color-secondary)]" />
-            <h1 className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground">
+        <header className="flex items-center justify-between h-16 px-4 md:px-6 border-b border-border bg-surface/80 backdrop-blur">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            <button
+              onClick={() => setMobileNavOpen((v) => !v)}
+              className="md:hidden shrink-0 -ml-1 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
+            >
+              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <span className="rec-dot h-2 w-2 rounded-full bg-secondary shadow-[0_0_8px_var(--color-secondary)] shrink-0" />
+            <h1 className="font-mono text-xs uppercase tracking-[0.28em] text-muted-foreground truncate">
               {(currentPage?.label || 'Clips')}
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <CreditsPill />
-            <ThemePicker />
+            <div className="hidden sm:flex items-center gap-2">
+              <CreditsPill />
+              <ThemePicker />
+            </div>
             <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold font-display">
               U
             </div>

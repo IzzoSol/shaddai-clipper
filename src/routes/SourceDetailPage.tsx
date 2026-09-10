@@ -316,8 +316,8 @@ export function SourceDetailPage() {
               </span>
             </div>
 
-            {/* transcript body — 680px fixed scroll window */}
-            <div className="p-5 h-[680px] flex flex-col">
+            {/* transcript body — a sane fraction of viewport height on mobile, fixed on desktop */}
+            <div className="p-5 h-[50vh] md:h-[680px] flex flex-col">
               <TranscriptPanel sourceId={sourceId!} segments={segments} />
             </div>
           </div>

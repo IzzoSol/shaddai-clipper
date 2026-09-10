@@ -266,7 +266,7 @@ export function UploadPage() {
               type="button"
               onClick={() => inputRef.current?.click()}
               className={cn(
-                'w-full flex flex-col items-center justify-center gap-6 py-24 px-10 cursor-pointer',
+                'w-full flex flex-col items-center justify-center gap-6 py-12 px-5 sm:py-24 sm:px-10 cursor-pointer',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset',
                 'transition-all duration-300 group',
               )}
@@ -342,7 +342,7 @@ export function UploadPage() {
 
           {/* ── ERROR state ── */}
           {!hasFile && fileError && (
-            <div className="flex flex-col items-center justify-center gap-5 py-24 px-10 text-center animate-scale-in">
+            <div className="flex flex-col items-center justify-center gap-5 py-12 px-5 sm:py-24 sm:px-10 text-center animate-scale-in">
               <div className="w-16 h-16 rounded-2xl bg-danger-light border border-danger/30 flex items-center justify-center">
                 <AlertCircle className="h-8 w-8 text-danger" />
               </div>

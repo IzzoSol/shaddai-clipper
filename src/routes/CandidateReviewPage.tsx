@@ -14,6 +14,13 @@ import {
 import { useUIStore } from '@/stores/uiStore'
 import { useClipsStore } from '@/stores/clipsStore'
 import { CandidateCard } from '@/components/CandidateCard'
+import type { ClipCandidate } from '@/types/api'
+
+// Stable empty-array reference for the "no candidates yet" case — an inline
+// `[]` fallback in the selector below would return a NEW array every render,
+// which useSyncExternalStore treats as a changed snapshot on every call,
+// causing an infinite render loop ("Maximum update depth exceeded").
+const EMPTY_CANDIDATES: ClipCandidate[] = []
 
 // ── platform toggle pill ──────────────────────────────────────
 function PlatformPill({
@@ -95,7 +102,7 @@ export function CandidateReviewPage() {
   const addToast = useUIStore((s) => s.addToast)
 
   const candidates = useClipsStore(
-    (s) => (sourceId ? (s.candidates[sourceId] ?? []) : [])
+    (s) => (sourceId ? (s.candidates[sourceId] ?? EMPTY_CANDIDATES) : EMPTY_CANDIDATES)
   )
   const generateClips  = useClipsStore((s) => s.generateClips)
   const setCandidateSelection = useClipsStore((s) => s.setCandidateSelection)
@@ -237,7 +244,7 @@ export function CandidateReviewPage() {
       </div>
 
       {/* ── two-column layout: candidates left, config right ── */}
-      <div className="flex gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-6 lg:items-start">
 
         {/* ── LEFT: candidate grid ── */}
         <div className="flex-1 min-w-0">
@@ -254,8 +261,8 @@ export function CandidateReviewPage() {
           </div>
         </div>
 
-        {/* ── RIGHT: sticky config panel ── */}
-        <div className="w-72 shrink-0 sticky top-6 space-y-4 animate-slide-in-right">
+        {/* ── RIGHT: config panel — sticky only at lg+ where there's room beside the grid ── */}
+        <div className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-6 space-y-4 animate-slide-in-right">
 
           {/* panel shell */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
