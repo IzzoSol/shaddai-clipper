@@ -15,6 +15,8 @@ import { existsSync, createWriteStream } from 'node:fs'
 import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { extractPCM16k, renderVerticalClip, probe } from './ffmpeg.ts'
+import { downloadFromUrl, probeUrlTitle } from './download.ts'
+import { assertSafePublicUrl } from './url-validate.ts'
 import { transcribePCM, type Segment } from './transcribe.ts'
 import { aura } from './aura.ts'
 import { narrate } from './narrate.ts'
@@ -296,6 +298,44 @@ app.post('/api/clips/v1/sources', async (req, reply) => {
   const src: Source = { sourceId, title: titleFrom(file.filename || 'Source'), originalFilename: file.filename || 'source.mp4', durationSec: 0, status: 'uploading', createdAt: new Date().toISOString() }
   sources.set(sourceId, src)
   processSource(sourceId) // fire and forget — poll /sources/:id
+  return { sourceId, status: 'uploading' }
+})
+
+// Paste-a-URL ingestion: download via yt-dlp (YouTube/TikTok/X/~1800 sites),
+// then hand off to the exact same pipeline a file upload uses.
+app.post('/api/clips/v1/sources/from-url', async (req, reply) => {
+  const body = (req.body || {}) as { url?: string }
+  const url = (body.url || '').trim()
+  if (!url) return reply.code(400).send({ error: { code: 'NO_URL', message: 'url required' } })
+  let parsed: URL
+  try {
+    parsed = assertSafePublicUrl(url)
+  } catch (e: any) {
+    return reply.code(400).send({ error: { code: 'BAD_URL', message: e?.message || 'invalid url' } })
+  }
+
+  const sourceId = randomUUID()
+  const dir = join(DATA, sourceId)
+  const src: Source = { sourceId, title: titleFrom(parsed.hostname), originalFilename: url, durationSec: 0, status: 'uploading', stage: 'downloading', createdAt: new Date().toISOString() }
+  sources.set(sourceId, src)
+
+  probeUrlTitle(url).then((title) => { if (title) src.title = title }) // best-effort, doesn't block ingestion
+
+  ;(async () => {
+    await acquireSlot() // downloading is bandwidth/CPU heavy — same gate as transcribe/render
+    try {
+      const inputPath = await downloadFromUrl(url, dir)
+      inputs.set(sourceId, inputPath)
+      releaseSlot()
+      processSource(sourceId) // continues through normalizing -> transcribing -> ingested
+    } catch (e: any) {
+      releaseSlot()
+      src.status = 'failed'
+      src.errorMessage = e?.message || String(e)
+      console.error(`[clips] source ${sourceId} download failed:`, src.errorMessage)
+    }
+  })()
+
   return { sourceId, status: 'uploading' }
 })
 

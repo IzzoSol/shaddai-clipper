@@ -98,6 +98,8 @@ export function UploadPage() {
   const addToast = useUIStore((s) => s.addToast)
   const uploadSource = useClipsStore((s) => s.uploadSource)
 
+  const importUrl = useClipsStore((s) => s.importUrl)
+
   const [file, setFile] = useState<File | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -105,6 +107,9 @@ export function UploadPage() {
   const [uploaded, setUploaded] = useState(false)
   const [sourceId, setSourceId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const [urlValue, setUrlValue] = useState('')
+  const [urlSubmitting, setUrlSubmitting] = useState(false)
 
   // ── validation ──
   const validateAndSet = useCallback((f: File) => {
@@ -176,13 +181,30 @@ export function UploadPage() {
     setSourceId(null)
   }
 
-  const handleUrlComingSoon = () => {
-    addToast({
-      type: 'info',
-      title: 'URL import — coming soon',
-      message: 'Drop a video file to process right now.',
-      duration: 4000,
-    })
+  const handleUrlImport = async () => {
+    const url = urlValue.trim()
+    if (!url || urlSubmitting) return
+    setUrlSubmitting(true)
+    try {
+      const id = await importUrl(url)
+      setUrlValue('')
+      addToast({
+        type: 'success',
+        title: 'Fetching source',
+        message: 'Downloading and queuing for transcription — this can take a minute.',
+        duration: 5000,
+      })
+      navigate(`/clips/sources/${id}`)
+    } catch (err) {
+      addToast({
+        type: 'error',
+        title: 'Import failed',
+        message: String((err as Error).message),
+        duration: 7000,
+      })
+    } finally {
+      setUrlSubmitting(false)
+    }
   }
 
   // ── derived ──
@@ -482,42 +504,35 @@ export function UploadPage() {
         )}
       </div>
 
-      {/* ── URL IMPORT — coming soon ── */}
+      {/* ── URL IMPORT ── */}
       <div className="pt-4 stagger-4 animate-fade-in">
         <div className="relative rounded-xl border border-dashed border-border overflow-hidden">
-          {/* disabled overlay */}
-          <div className="absolute inset-0 bg-background/55 backdrop-blur-[1.5px] pointer-events-none z-10" />
-
-          {/* "OFFLINE" watermark */}
-          <span
-            className="absolute right-3 bottom-2 font-mono text-[9px] text-muted-foreground/25 tracking-[0.22em] uppercase pointer-events-none z-0 select-none"
-            aria-hidden
-          >
-            URL IMPORT / OFFLINE
-          </span>
-
-          <div className="flex items-center gap-3 px-4 py-3.5 opacity-45">
-            <Link className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <Link className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
             <input
               type="url"
-              placeholder="https://youtube.com/watch?v=… (coming soon)"
-              disabled
-              className="flex-1 bg-transparent font-mono text-sm text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none cursor-not-allowed"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleUrlImport() }}
+              placeholder="https://youtube.com/watch?v=… or any public video link"
+              disabled={urlSubmitting}
+              className="flex-1 bg-transparent font-mono text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none disabled:opacity-50"
+              aria-label="Video source URL"
             />
             <button
               type="button"
-              onClick={handleUrlComingSoon}
-              className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-muted-foreground uppercase border border-border rounded px-2.5 py-1 pointer-events-auto cursor-not-allowed hover:border-muted-foreground/40 transition-colors"
-              aria-label="URL import coming soon"
+              onClick={handleUrlImport}
+              disabled={!urlValue.trim() || urlSubmitting}
+              className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-primary uppercase border border-primary/40 rounded px-2.5 py-1 hover:bg-primary-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             >
-              Soon
+              {urlSubmitting ? 'Fetching…' : 'Fetch'}
             </button>
           </div>
         </div>
 
         {/* Helper caption */}
         <p className="mt-2 font-mono text-[10px] text-muted-foreground/40 tracking-widest text-center uppercase">
-          File upload is the primary intake — URL import ships in v2
+          Paste a link — YouTube, TikTok, X, and most public video pages
         </p>
       </div>
 

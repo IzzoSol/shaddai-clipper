@@ -182,9 +182,16 @@ export const useClipsStore = create<ClipsState>()(
       },
 
       importUrl: async (url) => {
-        // The engine ingests uploaded files; URL import isn't supported yet.
-        const sourceId = 'url_' + Date.now().toString(36)
-        set((st) => ({ sources: [mapSource({ sourceId, title: url, originalFilename: url, status: 'failed', errorMessage: 'URL import coming soon — upload a file for now.', createdAt: new Date().toISOString() }), ...st.sources] }))
+        const r = await fetch(API + '/sources/from-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        })
+        if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error(body?.error?.message || 'import failed ' + r.status) }
+        const { sourceId } = await r.json()
+        const placeholder = mapSource({ sourceId, title: url, originalFilename: url, status: 'uploading', createdAt: new Date().toISOString() })
+        set((st) => ({ sources: [placeholder, ...st.sources.filter((s) => s.sourceId !== sourceId)] }))
+        pollSource(sourceId, set, get)
         return sourceId
       },
 

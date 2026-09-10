@@ -12,6 +12,7 @@
     "test:narrate": "node --import tsx/esm src/narrate.test.ts",
     "test:images": "node --import tsx/esm src/images.test.ts",
     "test:clean": "node --import tsx/esm src/clean.test.ts",
+    "test:url-validate": "node --import tsx/esm src/url-validate.test.ts",
     "verify:features": "node --import tsx/esm src/verify-features.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -28,7 +29,8 @@
     "ffprobe-static": "^3.1.0",
     "fluent-ffmpeg": "2.1.3",
     "tsx": "4.19.2",
-    "wavefile": "11.0.0"
+    "wavefile": "11.0.0",
+    "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "2.1.27",
