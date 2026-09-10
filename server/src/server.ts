@@ -241,7 +241,21 @@ async function generateBatch(batchId: string, candidateIds: string[]) {
 // ── server ──
 // Upload cap (env-tunable). Bounds memory/disk so a huge upload can't OOM the host.
 const MAX_UPLOAD_BYTES = (Number(process.env.MAX_UPLOAD_MB) || 1024) * 1024 * 1024
-const app = Fastify({ logger: false, bodyLimit: 1 * 1024 * 1024 }) // JSON bodies are tiny; video uses multipart
+const app = Fastify({
+  logger: false,
+  bodyLimit: 1 * 1024 * 1024, // JSON bodies are tiny; video uses multipart
+  // Compatibility shim: the main SHADDAI dashboard gateway
+  // (backend/capture-routes.js, backend/server-production.js) proxies to
+  // CLIPPER_ORIGIN + '/clipper/*'. Our real contract is /api/clips/v1/*.
+  // Rewrite the incoming URL before routing so both contracts work against
+  // the exact same routes below — nothing else changes.
+  rewriteUrl(req) {
+    const url = req.url || '/'
+    if (url === '/clipper/health' || url.startsWith('/clipper/health?')) return url.replace('/clipper/health', '/api/clips/v1/health')
+    if (url.startsWith('/clipper/')) return url.replace('/clipper/', '/api/clips/v1/')
+    return url
+  },
+})
 await app.register(cors, { origin: true })
 await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })
 await app.register(fstatic, { root: DATA, prefix: '/files/' })
