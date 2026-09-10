@@ -1,6 +1,18 @@
 # SHADDAI CLIPPER — COMPLETE BUILD SPECIFICATION FOR CLAUDE
 
-> **Mission:** Transform this partially-scaffolded full-stack app into a fully functional video clipping engine. This document is your single source of truth. Read it top-to-bottom before writing a single line of code.
+> **⚠️ STATUS (2026-09-10): BUILD COMPLETE — this doc is historical, not a task list.**
+> This app is fully built and live in production at https://shaddai-clipper.onrender.com
+> (repo: `IzzoSol/Shaddai-Clipper-Feature-`, branch `main`, UI codenamed "Cutting Room").
+> The actual backend (`server/src/server.ts`) evolved past this spec — it's a single
+> Fastify file with real ffmpeg + Whisper + highlight-scoring + narration + cover-image
+> generation, not the routes/services/ layout sketched below. **Do not "complete" or
+> rebuild anything here from Part 9's checklist — everything in it already shipped.**
+> If you're an agent landing on this repo fresh: read `server/src/server.ts` and
+> `src/` directly for ground truth, not the plan below. Treat this file as an
+> archived design doc explaining *why* things are shaped the way they are, not
+> as outstanding work.
+>
+> **Mission (historical):** Transform this partially-scaffolded full-stack app into a fully functional video clipping engine. This document is your single source of truth. Read it top-to-bottom before writing a single line of code.
 
 ---
 
